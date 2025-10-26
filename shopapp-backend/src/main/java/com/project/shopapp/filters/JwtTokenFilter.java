@@ -88,6 +88,7 @@ public class JwtTokenFilter extends OncePerRequestFilter{
                 Pair.of(String.format("%s/users/login", apiPrefix), "POST"),
                 Pair.of(String.format("%s/users/profile-images/**", apiPrefix), "GET"),
                 Pair.of(String.format("%s/users/refreshToken", apiPrefix), "POST"),
+                Pair.of(String.format("%s/users/auth/social/callback", apiPrefix), "GET"),
 
                 // Swagger
                 Pair.of("/api-docs","GET"),
@@ -102,7 +103,11 @@ public class JwtTokenFilter extends OncePerRequestFilter{
 
                 //Đăng nhập social
                 Pair.of(String.format("%s/users/auth/social-login**", apiPrefix), "GET"),
-                Pair.of(String.format("%s/users/auth/social/callback**", apiPrefix), "GET")
+                Pair.of(String.format("%s/users/auth/social/callback**", apiPrefix), "GET"),
+
+                Pair.of(String.format("%s/payments**", apiPrefix), "GET"),
+                Pair.of(String.format("%s/payments**", apiPrefix), "POST")
+
         );
 
         String requestPath = request.getServletPath();

@@ -101,9 +101,8 @@ public class WebSecurityConfig {
                 })
                 .csrf(AbstractHttpConfigurer::disable)
                 .oauth2Login(Customizer.withDefaults())
-                //.oauth2Login()
                 .oauth2ResourceServer(c -> c.opaqueToken(Customizer.withDefaults())
-                );;
+                );
         http.securityMatcher(String.valueOf(EndpointRequest.toAnyEndpoint()));
         return http.build();
     }

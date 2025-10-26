@@ -27,19 +27,25 @@ public class ShopappApplication {
 
 }
 /*
-1.Download file kafka-deployment.yaml trên Google Driver, copy vào "thư mục dự án"
-2.cd "thư mục dự án"
+cd "thư mục dự án"
 Trong bài này của mình là(trong máy tính của các bạn có thể là thư mục khác):
 MacOS
-cd /Users/hoangnd/Documents/code/udemy/ShopApp/
+cd /Volumes/data/code/udemy/ShopApp/shopapp-backend
 Windows:
-cd C:\\code\\udemy\\ShopApp
+cd C:\\code\\udemy\\ShopApp\\shopapp-backend
 docker rm -f zookeeper-01 zookeeper-02 zookeeper-03 kafka-broker-01
+docker-compose -f ./kafka-deployment.yaml down -v
+
 docker-compose -f ./kafka-deployment.yaml up -d zookeeper-01
 docker-compose -f ./kafka-deployment.yaml up -d zookeeper-02
 docker-compose -f ./kafka-deployment.yaml up -d zookeeper-03
 
-3.Đợi khoảng 10 giây sau đó chạy lệnh này
+Đợi khoảng 10 giây sau đó chạy lệnh này
 docker-compose -f ./kafka-deployment.yaml up -d kafka-broker-01
+
+Những lần sau khi restart máy có thể bật lại các container:
+docker restart zookeeper-01 zookeeper-02 zookeeper-03
+đợi vài giây:
+docker restart kafka-broker-01
 
 */

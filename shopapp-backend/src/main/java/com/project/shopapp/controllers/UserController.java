@@ -50,10 +50,8 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.beans.factory.annotation.Value;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+
 @RestController
 @RequestMapping("${api.prefix}/users")
 @RequiredArgsConstructor
@@ -157,50 +155,68 @@ public class UserController {
             @Valid @RequestBody UserLoginDTO userLoginDTO,
             HttpServletRequest request
     ) throws Exception {
-        // Kiểm tra thông tin đăng nhập và sinh token
+        // Gọi hàm login từ UserService cho đăng nhập truyền thống
         String token = userService.login(userLoginDTO);
+
+        // Xử lý token và thông tin người dùng
         String userAgent = request.getHeader("User-Agent");
         User userDetail = userService.getUserDetailsFromToken(token);
         Token jwtToken = tokenService.addToken(userDetail, token, isMobileDevice(userAgent));
 
+        // Tạo đối tượng LoginResponse
         LoginResponse loginResponse = LoginResponse.builder()
                 .message(localizationUtils.getLocalizedMessage(MessageKeys.LOGIN_SUCCESSFULLY))
                 .token(jwtToken.getToken())
                 .tokenType(jwtToken.getTokenType())
                 .refreshToken(jwtToken.getRefreshToken())
                 .username(userDetail.getUsername())
-                //.roles(userDetail.getAuthorities().stream().map(item -> item.getAuthority()).toList())
-                .roles(userDetail.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList()) //method reference
+                .roles(userDetail.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList())
                 .id(userDetail.getId())
                 .build();
-        return ResponseEntity.ok().body(ResponseObject.builder()
+
+        // Trả về phản hồi
+        return ResponseEntity.ok().body(
+                ResponseObject.builder()
                         .message("Login successfully")
                         .data(loginResponse)
                         .status(HttpStatus.OK)
-                .build());
+                        .build()
+        );
     }
-    @PostMapping("/refreshToken")
-    public ResponseEntity<ResponseObject> refreshToken(
-            @Valid @RequestBody RefreshTokenDTO refreshTokenDTO
+    //@PostMapping("/login/social")
+    private ResponseEntity<ResponseObject> loginSocial(
+            @Valid @RequestBody UserLoginDTO userLoginDTO,
+            HttpServletRequest request
     ) throws Exception {
-        User userDetail = userService.getUserDetailsFromRefreshToken(refreshTokenDTO.getRefreshToken());
-        Token jwtToken = tokenService.refreshToken(refreshTokenDTO.getRefreshToken(), userDetail);
+        // Gọi hàm loginSocial từ UserService cho đăng nhập mạng xã hội
+        String token = userService.loginSocial(userLoginDTO);
+
+        // Xử lý token và thông tin người dùng
+        String userAgent = request.getHeader("User-Agent");
+        User userDetail = userService.getUserDetailsFromToken(token);
+        Token jwtToken = tokenService.addToken(userDetail, token, isMobileDevice(userAgent));
+
+        // Tạo đối tượng LoginResponse
         LoginResponse loginResponse = LoginResponse.builder()
-                .message("Refresh token successfully")
+                .message(localizationUtils.getLocalizedMessage(MessageKeys.LOGIN_SUCCESSFULLY))
                 .token(jwtToken.getToken())
                 .tokenType(jwtToken.getTokenType())
                 .refreshToken(jwtToken.getRefreshToken())
                 .username(userDetail.getUsername())
                 .roles(userDetail.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList())
-                .id(userDetail.getId()).build();
+                .id(userDetail.getId())
+                .build();
+
+        // Trả về phản hồi
         return ResponseEntity.ok().body(
                 ResponseObject.builder()
+                        .message("Login successfully")
                         .data(loginResponse)
-                        .message(loginResponse.getMessage())
                         .status(HttpStatus.OK)
-                        .build());
-
+                        .build()
+        );
     }
+
     private boolean isMobileDevice(String userAgent) {
         // Kiểm tra User-Agent header để xác định thiết bị di động
         // Ví dụ đơn giản:
@@ -356,7 +372,11 @@ public class UserController {
     //Angular, bấm đăng nhập gg, redirect đến trang đăng nhập google, đăng nhập xong có "code"
     //Từ "code" => google token => lấy ra các thông tin khác
     @GetMapping("/auth/social-login")
-    public ResponseEntity<String> socialAuth(@RequestParam("login_type") String loginType){
+    public ResponseEntity<String> socialAuth(
+            @RequestParam("login_type") String loginType,
+            HttpServletRequest request
+    ){
+        //request.getRequestURI()
         loginType = loginType.trim().toLowerCase();  // Loại bỏ dấu cách và chuyển thành chữ thường
         String url = authService.generateAuthUrl(loginType);
         return ResponseEntity.ok(url);
@@ -378,26 +398,52 @@ public class UserController {
         }
 
         // Extract user information from userInfo map
-        String googleAccountId = (String) userInfo.get("sub");
-        String name = (String) userInfo.get("name");
-        String givenName = (String) userInfo.get("given_name");
-        String familyName = (String) userInfo.get("family_name");
-        String picture = (String) userInfo.get("picture");
-        String email = (String) userInfo.get("email");
-        Boolean emailVerified = (Boolean) userInfo.get("email_verified");
+        String accountId = "";
+        String name = "";
+        String picture = "";
+        String email = "";
+
+        if (loginType.trim().equals("google")) {
+            accountId = (String) Objects.requireNonNullElse(userInfo.get("sub"), "");
+            name = (String) Objects.requireNonNullElse(userInfo.get("name"), "");
+            picture = (String) Objects.requireNonNullElse(userInfo.get("picture"), "");
+            email = (String) Objects.requireNonNullElse(userInfo.get("email"), "");
+        } else if (loginType.trim().equals("facebook")) {
+            accountId = (String) Objects.requireNonNullElse(userInfo.get("id"), "");
+            name = (String) Objects.requireNonNullElse(userInfo.get("name"), "");
+            email = (String) Objects.requireNonNullElse(userInfo.get("email"), "");
+            // Lấy URL ảnh từ cấu trúc dữ liệu của Facebook
+            Object pictureObj = userInfo.get("picture");
+            if (pictureObj instanceof Map) {
+                Map<?, ?> pictureData = (Map<?, ?>) pictureObj;
+                Object dataObj = pictureData.get("data");
+                if (dataObj instanceof Map) {
+                    Map<?, ?> dataMap = (Map<?, ?>) dataObj;
+                    Object urlObj = dataMap.get("url");
+                    if (urlObj instanceof String) {
+                        picture = (String) urlObj;
+                    }
+                }
+            }
+        }
+
+    // Tạo đối tượng UserLoginDTO
         UserLoginDTO userLoginDTO = UserLoginDTO.builder()
                 .email(email)
                 .fullname(name)
-                .facebookAccountId("")
                 .password("")
                 .phoneNumber("")
                 .profileImage(picture)
                 .build();
+
         if (loginType.trim().equals("google")) {
-            userLoginDTO.setGoogleAccountId(googleAccountId);
+            userLoginDTO.setGoogleAccountId(accountId);
+            //userLoginDTO.setFacebookAccountId("");
         } else if (loginType.trim().equals("facebook")) {
-            userLoginDTO.setFacebookAccountId("");
+            userLoginDTO.setFacebookAccountId(accountId);
+            //userLoginDTO.setGoogleAccountId("");
         }
-        return this.login(userLoginDTO, request);
+
+        return this.loginSocial(userLoginDTO, request);
     }
 }

@@ -65,9 +65,9 @@ public class UserService implements IUserService{
                         localizationUtils.getLocalizedMessage(MessageKeys.ROLE_DOES_NOT_EXISTS)));
 
 
-//        if (role.getName().equalsIgnoreCase(Role.ADMIN)) {
-//            throw new PermissionDenyException("Registering admin accounts is not allowed");
-//        }
+        if (role.getName().equalsIgnoreCase(Role.ADMIN)) {
+            throw new PermissionDenyException("Registering admin accounts is not allowed");
+        }
         //convert from userDTO => user
         User newUser = User.builder()
                 .fullName(userDTO.getFullName())
@@ -91,111 +91,101 @@ public class UserService implements IUserService{
         return userRepository.save(newUser);
     }
 
+
     @Override
     public String login(UserLoginDTO userLoginDTO) throws Exception {
         Optional<User> optionalUser = Optional.empty();
-        String subject = null;
-        Role roleUser =roleRepository.findByName(Role.USER)
-                .orElseThrow(() -> new DataNotFoundException(
-                        localizationUtils.getLocalizedMessage(MessageKeys.ROLE_DOES_NOT_EXISTS)));
-        // Check by Google Account ID
-        if (userLoginDTO.getGoogleAccountId() != null && userLoginDTO.isGoogleAccountIdValid()) {
-            optionalUser = userRepository.findByGoogleAccountId(userLoginDTO.getGoogleAccountId());
-            subject = "Google:" + userLoginDTO.getGoogleAccountId();
-            // Nếu không tìm thấy người dùng, tạo bản ghi mới
-            if (optionalUser.isEmpty()) {
-                User newUser = User.builder()
-                        .fullName(userLoginDTO.getFullname() != null ? userLoginDTO.getFullname() : "")
-                        .email(userLoginDTO.getEmail() != null ? userLoginDTO.getEmail() : "")
-                        .profileImage(userLoginDTO.getProfileImage() != null ? userLoginDTO.getProfileImage(): "")
-                        .role(roleUser)
-                        .googleAccountId(userLoginDTO.getGoogleAccountId())
-                        .password("")
-                        .active(true) 
-                        .build();
 
-                // Lưu người dùng mới vào cơ sở dữ liệu
-                newUser = userRepository.save(newUser);
-                // Optional trở thành có giá trị với người dùng mới
-                optionalUser = Optional.of(newUser);
-            }
-
-            Map<String, Object> attributes = new HashMap<>();
-            attributes.put("email", userLoginDTO.getEmail());
-            OAuth2User principal = new DefaultOAuth2User(
-                    optionalUser.get().getAuthorities(), attributes, "email");
-            //No AuthenticationProvider found for org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken
-            OAuth2AuthenticationToken authenticationToken = new OAuth2AuthenticationToken(
-                    principal,
-                    optionalUser.get().getAuthorities(),
-                    "google"
-            );
-
-
-            //authenticate with Java Spring security
-            authenticationManager.authenticate(authenticationToken);
-
-            return jwtTokenUtil.generateToken(optionalUser.get());
-        }
-        // Check by Facebook Account ID
-        if (optionalUser.isEmpty() && userLoginDTO.isFacebookAccountIdValid()) {
-            optionalUser = userRepository.findByFacebookAccountId(userLoginDTO.getFacebookAccountId());
-            subject = "Facebook:" + userLoginDTO.getFacebookAccountId();
-
-            // Nếu không tìm thấy người dùng, tạo bản ghi mới
-            if (optionalUser.isEmpty()) {
-                User newUser = User.builder()
-                        .fullName(userLoginDTO.getFullname() != null ? userLoginDTO.getFullname() : "")
-                        .email(userLoginDTO.getEmail() != null ? userLoginDTO.getEmail() : "")
-                        .facebookAccountId(userLoginDTO.getFacebookAccountId())
-                        .role(roleUser)
-                        .password("") // Thiết lập mật khẩu là chuỗi rỗng
-                        .active(true) // Kích hoạt ngay lập tức cho người dùng mới
-                        .build();
-
-                // Lưu người dùng mới vào cơ sở dữ liệu
-                newUser = userRepository.save(newUser);
-
-                // Optional trở thành có giá trị với người dùng mới
-                optionalUser = Optional.of(newUser);
-            }
-        }
-        // Check if the user exists by phone number
+        // Kiểm tra người dùng qua số điện thoại
         if (userLoginDTO.getPhoneNumber() != null && !userLoginDTO.getPhoneNumber().isBlank()) {
             optionalUser = userRepository.findByPhoneNumber(userLoginDTO.getPhoneNumber());
-            subject = userLoginDTO.getPhoneNumber();
         }
 
-        // If the user is not found by phone number, check by email
+        // Nếu không tìm thấy người dùng bằng số điện thoại, thử tìm qua email
         if (optionalUser.isEmpty() && userLoginDTO.getEmail() != null) {
             optionalUser = userRepository.findByEmail(userLoginDTO.getEmail());
-            subject = userLoginDTO.getEmail();
         }
 
-        // If user is not found, throw an exception
+        // Nếu không tìm thấy người dùng, ném ngoại lệ
         if (optionalUser.isEmpty()) {
             throw new DataNotFoundException(localizationUtils.getLocalizedMessage(MessageKeys.WRONG_PHONE_PASSWORD));
         }
 
         User existingUser = optionalUser.get();
 
-        // Check if the user account is active
+        // Kiểm tra tài khoản có bị khóa không
         if (!existingUser.isActive()) {
             throw new DataNotFoundException(localizationUtils.getLocalizedMessage(MessageKeys.USER_IS_LOCKED));
         }
 
-        // Create authentication token using the found subject and granted authorities
-        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
-                subject,
-                userLoginDTO.isPasswordBlank()  ? "" : userLoginDTO.getPassword(),
-                existingUser.getAuthorities()
-        );
-
-
-        //authenticate with Java Spring security
-        authenticationManager.authenticate(authenticationToken);
+        // Tạo JWT token cho người dùng
         return jwtTokenUtil.generateToken(existingUser);
     }
+
+
+    @Override
+    public String loginSocial(UserLoginDTO userLoginDTO) throws Exception {
+        Optional<User> optionalUser = Optional.empty();
+        Role roleUser = roleRepository.findByName(Role.USER)
+                .orElseThrow(() -> new DataNotFoundException(
+                        localizationUtils.getLocalizedMessage(MessageKeys.ROLE_DOES_NOT_EXISTS)));
+
+        // Kiểm tra Google Account ID
+        if (userLoginDTO.isGoogleAccountIdValid()) {
+            optionalUser = userRepository.findByGoogleAccountId(userLoginDTO.getGoogleAccountId());
+
+            // Tạo người dùng mới nếu không tìm thấy
+            if (optionalUser.isEmpty()) {
+                User newUser = User.builder()
+                        .fullName(Optional.ofNullable(userLoginDTO.getFullname()).orElse(""))
+                        .email(Optional.ofNullable(userLoginDTO.getEmail()).orElse(""))
+                        .profileImage(Optional.ofNullable(userLoginDTO.getProfileImage()).orElse(""))
+                        .role(roleUser)
+                        .googleAccountId(userLoginDTO.getGoogleAccountId())
+                        .password("") // Mật khẩu trống cho đăng nhập mạng xã hội
+                        .active(true)
+                        .build();
+
+                // Lưu người dùng mới
+                newUser = userRepository.save(newUser);
+                optionalUser = Optional.of(newUser);
+            }
+        }
+        // Kiểm tra Facebook Account ID
+        else if (userLoginDTO.isFacebookAccountIdValid()) {
+            optionalUser = userRepository.findByFacebookAccountId(userLoginDTO.getFacebookAccountId());
+
+            // Tạo người dùng mới nếu không tìm thấy
+            if (optionalUser.isEmpty()) {
+                User newUser = User.builder()
+                        .fullName(Optional.ofNullable(userLoginDTO.getFullname()).orElse(""))
+                        .email(Optional.ofNullable(userLoginDTO.getEmail()).orElse(""))
+                        .profileImage(Optional.ofNullable(userLoginDTO.getProfileImage()).orElse(""))
+                        .role(roleUser)
+                        .facebookAccountId(userLoginDTO.getFacebookAccountId())
+                        .password("") // Mật khẩu trống cho đăng nhập mạng xã hội
+                        .active(true)
+                        .build();
+
+                // Lưu người dùng mới
+                newUser = userRepository.save(newUser);
+                optionalUser = Optional.of(newUser);
+            }
+        } else {
+            throw new IllegalArgumentException("Invalid social account information.");
+        }
+
+        User user = optionalUser.get();
+
+        // Kiểm tra nếu tài khoản bị khóa
+        if (!user.isActive()) {
+            throw new DataNotFoundException(localizationUtils.getLocalizedMessage(MessageKeys.USER_IS_LOCKED));
+        }
+
+        // Tạo JWT token cho người dùng
+        return jwtTokenUtil.generateToken(user);
+    }
+
     @Transactional
     @Override
     public User updateUser(Long userId, UpdateUserDTO updatedUserDTO) throws Exception {

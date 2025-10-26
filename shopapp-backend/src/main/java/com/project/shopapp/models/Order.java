@@ -68,6 +68,9 @@ public class Order {
     @Column(name = "active")
     private Boolean active;//thuộc về admin
 
+    @Column(name = "vnp_txn_ref", nullable = true)
+    private String vnpTxnRef; // Order ID của VNPay trả về
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonManagedReference
     private List<OrderDetail> orderDetails;
@@ -76,4 +79,6 @@ public class Order {
     @JoinColumn(name = "coupon_id", nullable = true)
     @JsonBackReference
     private Coupon coupon = null;
+
+
 }

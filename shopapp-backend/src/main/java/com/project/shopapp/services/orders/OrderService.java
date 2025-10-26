@@ -58,6 +58,13 @@ public class OrderService implements IOrderService{
         order.setActive(true);//đoạn này nên set sẵn trong sql
         //EAV-Entity-Attribute-Value model
         order.setTotalMoney(orderDTO.getTotalMoney());
+        // Lưu vnpTxnRef nếu có
+        if (orderDTO.getVnpTxnRef() != null) {
+            order.setVnpTxnRef(orderDTO.getVnpTxnRef());
+        }
+        if(orderDTO.getShippingAddress() == null) {
+            order.setShippingAddress(orderDTO.getAddress());
+        }
         // Tạo danh sách các đối tượng OrderDetail từ cartItems
         List<OrderDetail> orderDetails = new ArrayList<>();
         for (CartItemDTO cartItemDTO : orderDTO.getCartItems()) {
@@ -125,16 +132,20 @@ public class OrderService implements IOrderService{
     }
     @Override
     public Order getOrderById(Long orderId) {
-        Order selectedOrder = orderRepository.findById(orderId).orElse(null);
-        return selectedOrder;
+        // Tìm theo ID
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            // Nếu không tìm thấy theo ID, tìm theo vnpTxnRef
+            order = orderRepository.findByVnpTxnRef(orderId.toString()).orElse(null);
+        }
+        return order;
     }
 
     @Override
     @Transactional
     public Order updateOrder(Long id, OrderDTO orderDTO)
             throws DataNotFoundException {
-        Order order = orderRepository.findById(id).orElseThrow(() ->
-                new DataNotFoundException("Cannot find order with id: " + id));
+        Order order = getOrderById(id);
         User existingUser = userRepository.findById(
                 orderDTO.getUserId()).orElseThrow(() ->
                 new DataNotFoundException("Cannot find user with id: " + id));
@@ -201,7 +212,7 @@ public class OrderService implements IOrderService{
     @Override
     @Transactional
     public void deleteOrder(Long orderId) {
-        Order order = orderRepository.findById(orderId).orElse(null);
+        Order order = getOrderById(orderId);
         //no hard-delete, => please soft-delete
         if(order != null) {
             order.setActive(false);
@@ -217,5 +228,44 @@ public class OrderService implements IOrderService{
     @Override
     public Page<Order> getOrdersByKeyword(String keyword, Pageable pageable) {
         return orderRepository.findByKeyword(keyword, pageable);
+    }
+    @Override
+    @Transactional
+    public Order updateOrderStatus(Long id, String status) throws DataNotFoundException, IllegalArgumentException {
+        // Tìm đơn hàng theo ID
+        Order order = getOrderById(id); // Sẽ tìm theo ID trước, sau đó tìm theo vnpTxnRef
+
+        // Kiểm tra trạng thái hợp lệ
+        if (status == null || status.trim().isEmpty()) {
+            throw new IllegalArgumentException("Status cannot be null or empty");
+        }
+
+        // Kiểm tra xem trạng thái có nằm trong danh sách hợp lệ không
+        if (!OrderStatus.VALID_STATUSES.contains(status)) {
+            throw new IllegalArgumentException("Invalid status: " + status);
+        }
+
+        // Kiểm tra logic chuyển đổi trạng thái
+        String currentStatus = order.getStatus();
+        if (currentStatus.equals(OrderStatus.DELIVERED) && !status.equals(OrderStatus.CANCELLED)) {
+            throw new IllegalArgumentException("Cannot change status from DELIVERED to " + status);
+        }
+
+        if (currentStatus.equals(OrderStatus.CANCELLED)) {
+            throw new IllegalArgumentException("Cannot change status of a CANCELLED order");
+        }
+
+        if (status.equals(OrderStatus.CANCELLED)) {
+            // Kiểm tra xem đơn hàng có thể bị hủy không
+            if (!currentStatus.equals(OrderStatus.PENDING)) {
+                throw new IllegalArgumentException("Order can only be cancelled from PENDING status");
+            }
+        }
+
+        // Cập nhật trạng thái đơn hàng
+        order.setStatus(status);
+
+        // Lưu đơn hàng đã cập nhật
+        return orderRepository.save(order);
     }
 }

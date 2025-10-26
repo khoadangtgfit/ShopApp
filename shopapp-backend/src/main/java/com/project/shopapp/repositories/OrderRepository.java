@@ -20,6 +20,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             "OR o.email LIKE %:keyword%) " +
             "ORDER BY o.orderDate DESC")
     Page<Order> findByKeyword(@Param("keyword") String keyword, Pageable pageable);
+    // Thêm phương thức tìm theo vnpTxnRef
+    Optional<Order> findByVnpTxnRef(String vnpTxnRef);
 }
 /*
 INSERT INTO orders (user_id, fullname, email, phone_number, address, note, status, total_money)

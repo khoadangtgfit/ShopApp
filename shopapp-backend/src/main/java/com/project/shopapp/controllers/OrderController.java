@@ -178,4 +178,18 @@ public class OrderController {
                 .data(orderResponses)
                 .build());
     }
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasRole('ROLE_ADMIN') or hasRole('ROLE_USER')")
+    public ResponseEntity<ResponseObject> updateOrderStatus(
+            @Valid @PathVariable Long id,
+            @RequestParam String status) throws Exception {
+        // Gọi service để cập nhật trạng thái
+        Order updatedOrder = orderService.updateOrderStatus(id, status);
+        // Trả về phản hồi thành công
+        return ResponseEntity.ok(ResponseObject.builder()
+                .message("Order status updated successfully")
+                .status(HttpStatus.OK)
+                .data(OrderResponse.fromOrder(updatedOrder))
+                .build());
+    }
 }

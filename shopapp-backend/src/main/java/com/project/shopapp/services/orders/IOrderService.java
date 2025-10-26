@@ -16,4 +16,6 @@ public interface IOrderService {
     void deleteOrder(Long orderId);
     List<OrderResponse> findByUserId(Long userId);
     Page<Order> getOrdersByKeyword(String keyword, Pageable pageable);
+    // Thêm phương thức cập nhật trạng thái đơn hàng
+    Order updateOrderStatus(Long id, String status) throws DataNotFoundException;
 }

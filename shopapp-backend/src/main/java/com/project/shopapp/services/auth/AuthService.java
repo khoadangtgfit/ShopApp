@@ -1,14 +1,16 @@
 package com.project.shopapp.services.auth;
 
-import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeRequestUrl;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeTokenRequest;
-import com.google.api.client.http.HttpTransport;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -30,6 +32,9 @@ public class AuthService implements IAuthService{
     @Value("${spring.security.oauth2.client.registration.google.redirect-uri}")
     private String googleRedirectUri;
 
+    @Value("${spring.security.oauth2.client.registration.google.user-info-uri}")
+    private String googleUserInfoUri;
+
     @Value("${spring.security.oauth2.client.registration.facebook.redirect-uri}")
     private String facebookRedirectUri;
 
@@ -42,16 +47,22 @@ public class AuthService implements IAuthService{
     @Value("${spring.security.oauth2.client.registration.facebook.auth-uri}")
     private String facebookAuthUri;
 
+    @Value("${spring.security.oauth2.client.registration.facebook.token-uri}")
+    private String facebookTokenUri;
+
+    @Value("${spring.security.oauth2.client.registration.facebook.user-info-uri}")
+    private String facebookUserInfoUri;
+
     public String generateAuthUrl(String loginType) {
         String url = "";
         loginType = loginType.trim().toLowerCase(); // Normalize the login type
 
         if ("google".equals(loginType)) {
-            url = new GoogleAuthorizationCodeRequestUrl(
+            GoogleAuthorizationCodeRequestUrl urlBuilder = new GoogleAuthorizationCodeRequestUrl(
                     googleClientId,
                     googleRedirectUri,
-                    Arrays.asList("email", "profile", "openid"))
-                    .build();
+                    Arrays.asList("email", "profile", "openid"));
+            url = urlBuilder.build();
         } else if ("facebook".equals(loginType)) {
             /*
             url = String.format("https://www.facebook.com/v3.2/dialog/oauth?client_id=%s&redirect_uri=%s&scope=email,public_profile&response_type=code",
@@ -73,8 +84,7 @@ public class AuthService implements IAuthService{
         RestTemplate restTemplate = new RestTemplate();
         restTemplate.setRequestFactory(new HttpComponentsClientHttpRequestFactory());
         String accessToken;
-        String url;
-        Gson gson = new Gson();
+        //Gson gson = new Gson();
 
         switch (loginType.toLowerCase()) {
             case "google":
@@ -86,14 +96,22 @@ public class AuthService implements IAuthService{
                         googleRedirectUri
                 ).execute().getAccessToken();
 
-                // Set the URL for the Google API to fetch user info
-                url = "https://www.googleapis.com/oauth2/v3/userinfo";
-                break;
+                // Configure RestTemplate to include the access token in the Authorization header
+                restTemplate.getInterceptors().add((req, body, executionContext) -> {
+                    req.getHeaders().set("Authorization", "Bearer " + accessToken);
+                    return executionContext.execute(req, body);
+                });
+
+                // Make a GET request to fetch user information
+                return new ObjectMapper().readValue(
+                    restTemplate.getForEntity(googleUserInfoUri, String.class).getBody(),
+                    new TypeReference<>() {});
+                //break;
 
             case "facebook":
                 // Facebook token request setup
-                url = UriComponentsBuilder
-                        .fromUriString("https://graph.facebook.com/v20.0/oauth/access_token")
+                String urlGetAccessToken = UriComponentsBuilder
+                        .fromUriString(facebookTokenUri)
                         .queryParam("client_id", facebookClientId)
                         .queryParam("redirect_uri", facebookRedirectUri)
                         .queryParam("client_secret", facebookClientSecret)
@@ -101,27 +119,22 @@ public class AuthService implements IAuthService{
                         .toUriString();
 
                 // Use RestTemplate to fetch the Facebook access token
-                Map<String, Object> response = gson.fromJson(restTemplate.getForObject(url, String.class), Map.class);
-                accessToken = (String) response.get("access_token");
+                ResponseEntity<String> response = restTemplate.getForEntity(urlGetAccessToken, String.class);
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode node = mapper.readTree(response.getBody());
+                accessToken = node.get("access_token").asText();
 
                 // Set the URL for the Facebook API to fetch user info
-                url = "https://graph.facebook.com/me?fields=id,name,first_name,last_name,email,picture{url}";
-                break;
+                // Lấy thông tin người dùng
+                String userInfoUri = facebookUserInfoUri + "&access_token=" + accessToken;
+                return mapper.readValue(
+                        restTemplate.getForEntity(userInfoUri, String.class).getBody(),
+                        new TypeReference<>() {});
+                //break;
 
             default:
                 System.out.println("Unsupported login type: " + loginType);
                 return null;
         }
-
-        // Configure RestTemplate to include the access token in the Authorization header
-        restTemplate.getInterceptors().add((req, body, executionContext) -> {
-            req.getHeaders().set("Authorization", "Bearer " + accessToken);
-            return executionContext.execute(req, body);
-        });
-
-        // Make a GET request to fetch user information
-        String userInfoResponse = restTemplate.getForObject(url, String.class);
-        return gson.fromJson(userInfoResponse, Map.class);
     }
-
 }
